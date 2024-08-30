@@ -48,6 +48,7 @@ def create_prompt(sentence, k):
         * k (int): Number of examples in k-shot prompting
     '''
     # TODO
+    pass
 
 
 def exp_kshot(tokenizer, model, inputs, k):
@@ -87,7 +88,8 @@ def eval_outputs(eval_x, eval_y, gt_sql_pth, model_sql_path, gt_record_path, mod
     Add/modify the arguments and code as needed.
     '''
     # TODO
-    return sql_em, record_em, record_f1, model_error_msgs, error_rate
+    # return sql_em, record_em, record_f1, model_error_msgs, error_rate
+    pass
 
 
 def initialize_model_and_tokenizer(model_name, to_quantize=False):
