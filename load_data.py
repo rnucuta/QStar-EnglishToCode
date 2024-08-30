@@ -30,41 +30,45 @@ class T5Dataset(Dataset):
         super(T5Dataset, self).__init__()
         self.tokenizer = T5TokenizerFast.from_pretrained("google-t5/t5-small")
         
-        self.process_data(data_folder, split, self.tokenizer)
-
-        self.data = 
+        self.data = self.process_data(data_folder, split, self.tokenizer)
 
         self.len = 0
+        sefl.eval = False
 
 
 
     def process_data(self, data_folder, split, tokenizer):
-        
         self.eval = split == 'test'
-        # TODO
-        assert split in ['train', 'dev', 'test']
-        if split == 'train':
-            train_files = ['train.nl', 'train.sql']
-            with open('train.nl', 'r') as f:
-                lines = f.readlines()
-                self.len = len(lines)
-                tokenizer([line for line in lines], padding=, return_tensors="pt")
-        elif split == 'dev':
-            dev_files = ['dev.nl', 'dev.sql']
-        elif split == 'test':
-            test_file = 'test.nl'
-        
 
+        nl_file = f'{data_folder}/{split}.nl'
+        sql_file = f'{data_folder}/{split}.sql' if split != 'test' else None
 
+        with open(nl_file, 'r') as f_nl:
+            nl_lines = [line.strip() for line in f_nl.readlines()]
+
+        if sql_file:
+            with open(sql_file, 'r') as f_sql:
+                sql_lines = [line.strip() for line in f_sql.readlines()]
+            assert len(nl_lines) == len(sql_lines), "Mismatch between number of NL and SQL lines"
+
+        self.len = len(nl_lines)
+        inputs = tokenizer(nl_lines, padding='max_length', truncation=True, return_tensors="pt")
+
+        if split == 'test':
+            return {'input_ids': inputs['input_ids'], 'attention_mask': inputs['attention_mask']}
+
+        labels = tokenizer(sql_lines, padding='max_length', truncation=True, return_tensors="pt")
+        return {'input_ids': inputs['input_ids'], 'attention_mask': inputs['attention_mask'], 'labels': labels['input_ids']}
     
     def __len__(self):
-        # TODO
         return self.len
 
     def __getitem__(self, idx):
-        # TODO
-        if self.eval:
-            return 
+        assert self.__len__ >= idx
+        ordered_keys = ['input_ids', 'attention_mask', 'labels']
+        if self.split == 'test':
+            ordered_keys = ['input_ids', 'attention_mask']
+        return [self.data[key][idx] for key in ordered_keys]
 
 def normal_collate_fn(batch):
     '''
