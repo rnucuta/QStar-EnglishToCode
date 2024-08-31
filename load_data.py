@@ -31,7 +31,11 @@ class T5Dataset(Dataset):
         
         self.data = self.process_data(data_folder, split, self.tokenizer)
 
-        self.len = 0
+        self.num_samples = len(self.data['input_ids']) if 'input_ids' in self.data else 0
+        
+        if self.num_samples == 0:
+            raise ValueError("No data found or processed incorrectly for the provided files.")
+        self.split = split
           
 
     def process_data(self, data_folder, split, tokenizer):
@@ -46,38 +50,47 @@ class T5Dataset(Dataset):
         nl_file = f'{data_folder}/{split}.nl'
         sql_file = f'{data_folder}/{split}.sql' if split != 'test' else None
 
+        print("Processing natural language data for split: ", split)
         with open(nl_file, 'r') as f_nl:
-            nl_lines = [line.strip() for line in f_nl.readlines()]
+            nl_lines = [line.strip() for line in tqdm(f_nl.readlines())]
 
         if sql_file:
+            print("Processing sql data for split: ", split)
             with open(sql_file, 'r') as f_sql:
                 sql_lines = [line.strip() for line in f_sql.readlines()]
             assert len(nl_lines) == len(sql_lines), "Mismatch between number of NL and SQL lines"
 
-        self.len = len(nl_lines)
-        inputs = tokenizer(nl_lines, max_length=512, Truncation=True, return_tensors="pt")
+        # self.num_samples = len(nl_lines)
+        inputs = tokenizer(nl_lines, max_length=512, truncation=True, padding=True, return_tensors="pt")
+        # if self.num_samples == 0:
+            # raise ValueError("No data found in the provided files.")
 
         if split == 'test':
             return {'input_ids': inputs.input_ids, 'attention_mask': inputs.attention_mask}
 
-        labels = tokenizer(sql_lines, max_length=128, Truncation=True, return_tensors="pt")
+        labels = tokenizer(sql_lines, max_length=512, truncation=True, padding=True, return_tensors="pt")
+        # print(inputs.input_ids.shape)
+        # print(inputs.attention_mask.shape)
+        # print(labels.input_ids.shape)
+        # print(self.len)
         return {'input_ids': inputs.input_ids, 'attention_mask': inputs.attention_mask, 'labels': labels.input_ids}
     
     def __len__(self):
         '''
         Returns the length of the dataset
         '''
-        return self.len
+        return self.num_samples
 
     def __getitem__(self, idx):
         '''
         Returns the item at index idx from the dataset
         '''
-        assert self.__len__ >= idx
+        assert self.num_samples > idx
         ordered_keys = ['input_ids', 'attention_mask', 'labels']
         if self.split == 'test':
             ordered_keys = ['input_ids', 'attention_mask']
-        return [self.data[key][idx] for key in ordered_keys]
+        # print([self.data[key][idx] for key in ordered_keys])
+        return tuple(self.data[key][idx] for key in ordered_keys)
 
 def normal_collate_fn(batch):
     '''
@@ -101,10 +114,15 @@ def normal_collate_fn(batch):
     # Dynamically pad sequences in batch
     encoder_ids = pad_sequence(input_ids, batch_first=True, padding_value=PAD_IDX)
     encoder_mask = pad_sequence(attention_mask, batch_first=True, padding_value=PAD_IDX)
-    decoder_inputs = pad_sequence([label[:-1] for label in labels], batch_first=True, padding_value=PAD_IDX)
-    decoder_targets = pad_sequence([label[1:] for label in labels], batch_first=True, padding_value=PAD_IDX)
+    
+    # t5 auto performs this for decoder_inputs when labels flag is used instead
+    decoder_inputs = pad_sequence([torch.cat((torch.tensor([PAD_IDX], dtype=torch.long, device=label.device), label[:-1])) for label in labels], batch_first=True, padding_value=PAD_IDX)
+    decoder_targets = pad_sequence(labels, batch_first=True, padding_value=PAD_IDX)
 
-    decoder_targets[decoder_targets == PAD_IDX] = -100
+    # can't factor in padding tokens into loss
+    # below method is recommended workaround by T5 authors, but another workaround 
+    # is provided in train_t5
+    # decoder_targets[decoder_targets == PAD_IDX] = -100
 
     initial_decoder_inputs = torch.full((len(batch), 1), PAD_IDX)
 
@@ -137,9 +155,10 @@ def test_collate_fn(batch):
 def get_dataloader(batch_size, split):
     data_folder = 'data'
     dset = T5Dataset(data_folder, split)
+
     shuffle = split == "train"
     collate_fn = normal_collate_fn if split != "test" else test_collate_fn
-
+    
     dataloader = DataLoader(dset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_fn)
     return dataloader
 

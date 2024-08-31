@@ -6,12 +6,14 @@ def read_schema(schema_path):
     Read the .schema file
     '''
     # TODO
+    pass
 
 def extract_sql_query(response):
     '''
     Extract the SQL query from the model's response
     '''
     # TODO
+    pass
 
 def save_logs(output_path, sql_em, record_em, record_f1, error_msgs):
     '''

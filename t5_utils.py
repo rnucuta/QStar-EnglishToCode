@@ -10,9 +10,28 @@ import wandb
 DEVICE = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
 def setup_wandb(args):
-    # TODO
     # Implement this if you wish to use wandb in your experiments
-    pass
+    try:
+        wandb.login()
+    except Exception as e:
+        print("Error logging into wandb: {}".format(e))
+        return
+    wandb.init(
+        project="Tasks_1-2",
+        name=args.experiment_name,
+        config={
+            "finetune": args.finetune,
+            "optimizer_type": args.optimizer_type,
+            "learning_rate": args.learning_rate,
+            "weight_decay": args.weight_decay,
+            "scheduler_type": args.scheduler_type,
+            "num_warmup_epochs": args.num_warmup_epochs,
+            "max_n_epochs": args.max_n_epochs,
+            "patience_epochs": args.patience_epochs,
+            "batch_size": args.batch_size,
+            "test_batch_size": args.test_batch_size,
+        },
+    )
 
 def initialize_model(args):
     '''
@@ -21,16 +40,22 @@ def initialize_model(args):
     or training a T5 model initialized with the 'google-t5/t5-small' config
     from scratch.
     '''
-    if args.finetune:
-        model = T5ForConditionalGeneration.from_pretrained('google-t5/t5-small')
-    else:
-        config = T5Config.from_pretrained('google-t5/t5-small')
-        model = T5ForConditionalGeneration(config)
+    try:
+        if args.finetune:
+            model = T5ForConditionalGeneration.from_pretrained('google-t5/t5-small')
+        else:
+            config = T5Config.from_pretrained('google-t5/t5-small')
+            model = T5ForConditionalGeneration(config)
 
-    if args.use_wandb:
-        wandb.watch(model, log_freq=100)
+        if args.use_wandb:
+            wandb.watch(model, log_freq=100)
 
-    model.to(DEVICE)
+        model.to(DEVICE)
+
+    except Exception as e:
+        print("Error initializing model: {}".format(e))
+        model = None
+    
     return model
 
 def mkdir(dirpath):
@@ -41,14 +66,22 @@ def mkdir(dirpath):
             pass
 
 def save_model(checkpoint_dir, model, best):
-    # TODO
     # Save model checkpoint to be able to load the model later
-    pass
+    if best:
+        model.save_pretrained(os.path.join(checkpoint_dir, 'best'))
+    else:
+        model.save_pretrained(os.path.join(checkpoint_dir, 'latest'))
 
 def load_model_from_checkpoint(args, best):
-    # TODO
     # Load model from a checkpoint
-    pass
+    model_type = 'ft' if args.finetune else 'scr'
+    checkpoint_dir = os.path.join('checkpoints', f'{model_type}_experiments', args.experiment_name)
+    if best:
+        model = T5ForConditionalGeneration.from_pretrained(os.path.join(checkpoint_dir, 'best'))
+    else:
+        model = T5ForConditionalGeneration.from_pretrained(os.path.join(checkpoint_dir, 'latest'))
+    model.to(DEVICE)
+    return model
 
 def initialize_optimizer_and_scheduler(args, model, epoch_length):
     optimizer = initialize_optimizer(args, model)
